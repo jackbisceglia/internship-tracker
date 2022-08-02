@@ -16,9 +16,13 @@ type PostResponse struct {
 	NewGradPosts []crud.PostingData
 }
 
+type DeletePostPayload struct {
+	Url string `json:"url"`
+}
+
 func PostingRoutes(router *mux.Router, db *sql.DB) {
 	HandleMultiplePostingRoutes := util.RouterUtils(router)
-	GetPostings, InsertPosting := crud.PostingsCrud(db)
+	GetPostings, InsertPosting, DeletePosting := crud.PostingsCrud(db)
 
 	getPostingsHandler := func(w http.ResponseWriter, r *http.Request) {
 		postings := GetPostings()
@@ -75,6 +79,42 @@ func PostingRoutes(router *mux.Router, db *sql.DB) {
 		w.Write(res)
 	}
 
+	deletePostingHandler := func(w http.ResponseWriter, r *http.Request) {
+		if !util.ValidateUserRequest(mux.Vars(r)["apiKey"]) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		var deletePostPayload DeletePostPayload
+
+		// Check for errors, and decode JSON into variable typed as struct
+		err := json.NewDecoder(r.Body).Decode(&deletePostPayload)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Delete user from database
+		deletionError := DeletePosting(deletePostPayload.Url)
+		fmt.Printf("%v\n", deletionError)
+
+		if deletionError != nil {
+			http.Error(w, deletionError.Error(), http.StatusConflict)
+			return
+		}
+	
+		w.Header().Set("Content-Type", "application/json")
+		res, err := json.Marshal(Response{Success: deletionError == nil})
+			
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+
+		w.Write(res)
+	}
+
 	HandleMultiplePostingRoutes([]string{"", "/"}, getPostingsHandler, "GET", false)
 	HandleMultiplePostingRoutes([]string{"", "/"}, postPostingsHandler, "POST", false)
+	HandleMultiplePostingRoutes([]string{"/{apiKey}", "/{apiKey}/"}, deletePostingHandler, "DELETE", false)
+
 }
